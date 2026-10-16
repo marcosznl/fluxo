@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 struct SpeedResult {
@@ -28,11 +27,28 @@ final class SpeedTester: ObservableObject {
     @Published private(set) var liveUpload: Double = 0
     @Published private(set) var status: String?
     @Published private(set) var serverLabel: String?
+    /// Aviso sobre o último teste (por exemplo, quando caiu para o teste da Apple).
+    @Published private(set) var notice: String?
 
     var isRunning: Bool { phase != .idle }
 
     /// A velocidade da fase atual, a que move o velocímetro.
     var liveSpeed: Double { phase == .upload ? liveUpload : liveDownload }
+
+    /// Roda o teste escolhido. Se o da operadora falhar (os servidores da Ookla não são uma
+    /// API oficial e podem mudar), cai para o da Apple. Retorna o teste que valeu.
+    func runWithFallback(engine: TestEngine) async throws -> (SpeedResult, TestEngine) {
+        notice = nil
+        do {
+            return (try await run(engine: engine), engine)
+        } catch {
+            guard engine == .operadora, !Task.isCancelled, !(error is CancellationError) else { throw error }
+            let reason = error.localizedDescription.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+            let result = try await run(engine: .apple)
+            notice = "O teste da operadora falhou (\(reason)). Usei o da Apple."
+            return (result, .apple)
+        }
+    }
 
     func run(engine: TestEngine) async throws -> SpeedResult {
         guard !isRunning else { throw SpeedTestError(message: "Já tem um teste em andamento.") }
@@ -49,17 +65,21 @@ final class SpeedTester: ObservableObject {
         switch engine {
         case .apple:
             serverLabel = "Apple"
-            // O networkQuality só imprime a velocidade ao vivo num terminal, daí o pseudo-terminal.
             let running = RunningProcess()
+            // -s: sequencial, download e upload medidos separadamente.
             let output = try await withTaskCancellationHandler {
-                try await Self.runInPTY(running) { [weak self] line in
+                try await PTY.run("/usr/bin/networkQuality", ["-s", "-v"], running: running) { [weak self] line in
                     Task { @MainActor in self?.consumeLive(line) }
                 }
             } onCancel: {
                 running.terminate()
             }
             try Task.checkCancellation()
-            return try Self.parseSummary(output)
+            if output.status != 0 && !output.text.contains("SUMMARY") {
+                let tail = output.text.split(separator: "\n").suffix(2).joined(separator: " ")
+                throw SpeedTestError(message: tail.isEmpty ? "O teste falhou. Você está conectado?" : tail)
+            }
+            return try Self.parseSummary(output.text)
         case .operadora:
             return try await OperatorTest.run(.init(
                 status: { [weak self] in self?.status = $0 },
@@ -88,69 +108,6 @@ final class SpeedTester: ObservableObject {
     nonisolated private static let liveLine =
         /Downlink: capacity ([\d.]+) Mbps.*?- Uplink: capacity ([\d.]+) Mbps/
 
-    nonisolated private static func runInPTY(_ running: RunningProcess,
-                                             onLine: @escaping @Sendable (String) -> Void) async throws -> String {
-        try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var master: Int32 = 0
-                var slave: Int32 = 0
-                var size = winsize(ws_row: 50, ws_col: 400, ws_xpixel: 0, ws_ypixel: 0)
-                guard openpty(&master, &slave, nil, nil, &size) == 0 else {
-                    cont.resume(throwing: SpeedTestError(message: "Não consegui abrir um terminal para o teste."))
-                    return
-                }
-
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/networkQuality")
-                process.arguments = ["-s", "-v"]   // sequencial: download e upload medidos separadamente
-                let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: false)
-                process.standardOutput = slaveHandle
-                process.standardError = slaveHandle
-                process.standardInput = FileHandle.nullDevice
-                do {
-                    try running.start(process)
-                } catch {
-                    close(master)
-                    close(slave)
-                    cont.resume(throwing: SpeedTestError(message: "O networkQuality não abriu: \(error.localizedDescription)"))
-                    return
-                }
-                // Sem a nossa cópia do slave, o read() abaixo termina quando o processo sai.
-                close(slave)
-
-                var all = Data()
-                var pending = ""
-                var buffer = [UInt8](repeating: 0, count: 4096)
-                while true {
-                    let n = read(master, &buffer, buffer.count)
-                    if n <= 0 { break }
-                    all.append(buffer, count: n)
-                    pending += String(decoding: buffer[0..<n], as: UTF8.self)
-                    // O networkQuality reescreve a mesma linha com \r.
-                    var parts = pending.components(separatedBy: CharacterSet(charactersIn: "\r\n"))
-                    pending = parts.removeLast()
-                    for line in parts where !line.isEmpty {
-                        onLine(stripANSI(line))
-                    }
-                }
-                close(master)
-                process.waitUntilExit()
-
-                let text = stripANSI(String(decoding: all, as: UTF8.self))
-                if process.terminationStatus != 0 && !text.contains("SUMMARY") {
-                    let tail = text.split(separator: "\n").suffix(2).joined(separator: " ")
-                    cont.resume(throwing: SpeedTestError(message: tail.isEmpty ? "O teste falhou. Você está conectado?" : tail))
-                } else {
-                    cont.resume(returning: text)
-                }
-            }
-        }
-    }
-
-    nonisolated private static func stripANSI(_ s: String) -> String {
-        s.replacing(/\u{1B}\[[0-9;?]*[A-Za-z]/, with: "")
-    }
-
     nonisolated static func parseSummary(_ text: String) throws -> SpeedResult {
         func number(_ regex: Regex<(Substring, Substring)>) -> Double? {
             text.firstMatch(of: regex).flatMap { Double($0.1) }
@@ -169,27 +126,5 @@ final class SpeedTester: ObservableObject {
             serverLabel: ServerName.friendly(server),
             interface: text.firstMatch(of: /Interface: (\S+)/).map { String($0.1) }
         )
-    }
-}
-
-/// Guarda o processo do teste para poder encerrá-lo se o usuário cancelar.
-private final class RunningProcess: @unchecked Sendable {
-    private let lock = NSLock()
-    private var process: Process?
-    private var cancelled = false
-
-    func start(_ p: Process) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if cancelled { throw CancellationError() }
-        try p.run()
-        process = p
-    }
-
-    func terminate() {
-        lock.lock()
-        defer { lock.unlock() }
-        cancelled = true
-        if process?.isRunning == true { process?.terminate() }
     }
 }

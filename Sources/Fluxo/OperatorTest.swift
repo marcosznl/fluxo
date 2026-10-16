@@ -22,6 +22,9 @@ enum OperatorTest {
         func url(_ path: String) -> URL { URL(string: "https://\(host)\(path)")! }
     }
 
+    /// Só para o autoteste (`--simular-falha`): faz a lista de servidores "não responder".
+    nonisolated(unsafe) static var simulateFailure = false
+
     static let streams = 8
     static let phaseSeconds: TimeInterval = 10
     static let warmupSeconds: TimeInterval = 2
@@ -63,6 +66,7 @@ enum OperatorTest {
         let list = URL(string: "https://www.speedtest.net/api/js/servers?engine=js&https_functional=true&limit=10")!
         let all: [Server]
         do {
+            if simulateFailure { throw URLError(.cannotConnectToHost) }
             let (data, _) = try await URLSession.shared.data(from: list)
             all = try JSONDecoder().decode([Server].self, from: data)
         } catch {

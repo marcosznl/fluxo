@@ -11,7 +11,8 @@ Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone 
   - **Operadora** (estilo Speedtest): até um servidor da rede Speedtest (Ookla) perto de
     você, de preferência da sua operadora (no caso da Nio, os da V.tal). Usa a lista pública
     de servidores e os endpoints HTTPS deles, com 8 conexões em paralelo. Não é uma API
-    oficial da Ookla, então pode mudar no futuro.
+    oficial da Ookla, então pode mudar no futuro. Se ela falhar, o app cai sozinho para o
+    teste da Apple e avisa.
 - Velocímetro em meia-lua (escala 0 · 5 · 10 · 50 · 100 · 250 · 500 · 750 · 1G) que enche
   ao vivo: azul no download, roxo no upload.
 - Resultado: download, upload, latência e latência com carga (a latência enquanto a
@@ -20,8 +21,11 @@ Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone 
 - Cada teste registra se foi por **Wi-Fi** ou **cabo**. No Wi-Fi, guarda também faixa,
   canal, sinal (dBm), ruído e taxa do link, lidos no início do teste pelo CoreWLAN (sem
   pedir permissão de Localização; por isso o nome da rede não aparece).
-- O histórico filtra por conexão, mostra a média da seleção e um gráfico do download
-  com uma linha para Wi-Fi e outra para cabo.
+- **Usando a internet agora**: com o painel aberto, os 5 apps que mais usam a rede naquele
+  momento, lidos do `nettop` (que só roda enquanto o painel está aberto).
+- O histórico filtra por conexão, mostra a média da seleção e um gráfico (download ou
+  upload) com uma linha só e os pontos coloridos por Wi-Fi ou cabo. Clicar num teste abre
+  tudo o que foi guardado dele; dali dá para apagá-lo. "Limpar histórico…" fica na engrenagem.
 - O teste pode ser cancelado no meio (botão Cancelar ou Esc).
 - Teste automático (a cada 1, 3, 6 ou 12 horas) que se adia sozinho no hotspot do celular,
   no Modo de Poucos Dados e, se você quiser, na bateria. Ele só notifica quando algo foge
@@ -72,6 +76,8 @@ swift build
 .build/debug/Fluxo --teste operadora      # idem, no estilo Speedtest
 .build/debug/Fluxo --teste apple --cancelar-em 6   # testa o cancelamento
 .build/debug/Fluxo --trafego                # imprime o tráfego ao vivo por 5 s
+.build/debug/Fluxo --apps                   # imprime os apps que mais usam a rede por 10 s
+.build/debug/Fluxo --teste operadora --simular-falha   # confere o plano B (cai para a Apple)
 ```
 
 Observação: o SwiftUI deste macOS implementa `@State` como macro, que só compila com

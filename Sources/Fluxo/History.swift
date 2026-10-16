@@ -95,6 +95,16 @@ final class HistoryStore: ObservableObject {
         save()
     }
 
+    func delete(_ id: UUID) {
+        state.records.removeAll { $0.id == id }
+        save()
+    }
+
+    func clearHistory() {
+        state.records.removeAll()
+        save()
+    }
+
     func setEngine(_ engine: TestEngine) {
         state.engine = engine
         save()

@@ -29,6 +29,9 @@ struct FluxoApp: App {
             try? GaugeIcon.writeOptionsSheet(to: URL(fileURLWithPath: args[i + 1]))
             exit(0)
         }
+        if args.contains("--apps") {
+            DispatchQueue.main.async { AppTrafficSelfTest.run() }
+        }
         if args.contains("--trafego") {
             DispatchQueue.main.async { TrafficSelfTest.run() }
         }
@@ -37,6 +40,7 @@ struct FluxoApp: App {
             let cancelAfter = args.firstIndex(of: "--cancelar-em").flatMap { j in
                 args.dropFirst(j + 1).first.flatMap(Double.init)
             }
+            OperatorTest.simulateFailure = args.contains("--simular-falha")
             DispatchQueue.main.async { SelfTest.run(engine: engine, cancelAfter: cancelAfter) }
         }
     }
@@ -47,6 +51,16 @@ struct FluxoApp: App {
                 .environmentObject(controller)
                 .environmentObject(controller.history)
                 .environmentObject(controller.tester)
+                .environmentObject(controller.appTraffic)
+                // A lista de apps só é medida com o painel aberto.
+                .onAppear { controller.appTraffic.start() }
+                .onDisappear { controller.appTraffic.stop() }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                    controller.appTraffic.stop()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    controller.appTraffic.start()
+                }
         } label: {
             MenuBarLabel(history: controller.history, tester: controller.tester, traffic: controller.traffic)
         }
@@ -93,6 +107,7 @@ final class TestController: ObservableObject {
     let history: HistoryStore
     let tester = SpeedTester()
     let traffic = TrafficMonitor()
+    let appTraffic = AppTrafficMonitor()
 
     @Published var errorMessage: String?
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -126,8 +141,8 @@ final class TestController: ObservableObject {
         let wifi = ConnectionKind.of(interface: interface) == .wifi ? WifiInfo.current(interface: interface) : nil
         currentTest = Task {
             do {
-                let result = try await tester.run(engine: engine)
-                let record = history.add(result, engine: engine, automatic: automatic, wifi: wifi)
+                let (result, used) = try await tester.runWithFallback(engine: engine)
+                let record = history.add(result, engine: used, automatic: automatic, wifi: wifi)
                 if automatic { notifyIfUnusual(record) }
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }

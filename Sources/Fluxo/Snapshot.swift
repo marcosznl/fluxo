@@ -38,6 +38,17 @@ enum Snapshot {
             }
             UserDefaults.standard.set("download", forKey: "graficoMetrica")
 
+            // Histórico com o detalhe de um teste por Wi-Fi aberto.
+            let sample = sampleHistory(empty: false)
+            if let wifiTest = sample.state.records.last(where: { $0.connection == .wifi }) {
+                let list = HistoryList(previewExpanded: wifiTest.id)
+                    .environmentObject(sample)
+                    .padding(14)
+                    .frame(width: 330)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                save(list, appearance, to: out.appendingPathComponent("historico-detalhe-\(mode).png"))
+            }
+
             // O gráfico com o seu histórico de verdade (só leitura).
             let real = HistoryStore().state.records
             if real.count >= 2 {
@@ -123,6 +134,7 @@ enum Snapshot {
             .environmentObject(controller)
             .environmentObject(controller.history)
             .environmentObject(controller.tester)
+            .environmentObject(controller.appTraffic)
             .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -157,8 +169,9 @@ enum SelfTest {
         let test = Task {
             defer { ticker.invalidate() }
             do {
-                let r = try await tester.run(engine: engine)
-                print("Resultado: \(r)")
+                let (r, used) = try await tester.runWithFallback(engine: engine)
+                print("Resultado (\(used.title)): \(r)")
+                if let notice = tester.notice { print("Aviso: \(notice)") }
                 print("Conexão: \(ConnectionKind.of(interface: r.interface)?.title ?? "?")")
                 exit(0)
             } catch {
@@ -194,6 +207,30 @@ enum TrafficSelfTest {
                 ticks += 1
                 print("  ↓ \(TrafficBadge.format(monitor.downBps))   ↑ \(TrafficBadge.format(monitor.upBps))")
                 if ticks == 5 { exit(0) }
+            }
+        }
+    }
+}
+
+/// `Fluxo --apps` imprime, por alguns segundos, os apps que mais usam a rede (confere o nettop).
+@MainActor
+enum AppTrafficSelfTest {
+    static func run() {
+        let monitor = AppTrafficMonitor()
+        monitor.start()
+        var ticks = 0
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            Task { @MainActor in
+                ticks += 1
+                print("— \(ticks * 2) s")
+                for app in monitor.top {
+                    print("  \(app.name)  ↓ \(TrafficBadge.format(app.downBps))  ↑ \(TrafficBadge.format(app.upBps))"
+                          + (app.icon == nil ? "" : "  [ícone]"))
+                }
+                if ticks == 5 {
+                    monitor.stop()
+                    exit(0)
+                }
             }
         }
     }

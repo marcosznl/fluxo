@@ -60,6 +60,13 @@ struct PopoverView: View {
                 .keyboardShortcut(.defaultAction)
             }
 
+            if let notice = tester.notice {
+                Label(notice, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if let error = controller.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
@@ -67,6 +74,7 @@ struct PopoverView: View {
             }
 
             Metrics()
+            AppsUsingNetwork()
             HistoryList()
             Footer()
         }
@@ -160,12 +168,64 @@ struct Metrics: View {
     }
 }
 
+// MARK: - Quem está usando a internet agora
+
+struct AppsUsingNetwork: View {
+    @EnvironmentObject var apps: AppTrafficMonitor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Usando a internet agora")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if apps.top.isEmpty {
+                Text(apps.hasReading ? "Nenhum app usando a rede." : "Medindo…")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(apps.top) { app in
+                HStack(spacing: 8) {
+                    Group {
+                        if let icon = app.icon {
+                            Image(nsImage: icon).resizable()
+                        } else {
+                            Image(systemName: "gearshape.2").foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(width: 16, height: 16)
+                    Text(app.name).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 6)
+                    Label(TrafficBadge.format(app.downBps), systemImage: "arrow.down")
+                        .labelStyle(CompactLabel(tint: .blue))
+                        .frame(width: 78, alignment: .trailing)
+                    Label(TrafficBadge.format(app.upBps), systemImage: "arrow.up")
+                        .labelStyle(CompactLabel(tint: .purple))
+                        .frame(width: 72, alignment: .trailing)
+                }
+                .font(.caption.monospacedDigit())
+            }
+        }
+        .animation(.default, value: apps.top.map(\.name))
+        .module()
+    }
+}
+
 // MARK: - Histórico
+
+/// Qual teste está aberto no histórico e qual está esperando confirmação para ser apagado.
+/// (Classe só para viver num @StateObject: o @State é uma macro que exige o Xcode.)
+final class HistorySelection: ObservableObject {
+    @Published var expanded: UUID?
+    @Published var confirmingDelete: UUID?
+}
 
 struct HistoryList: View {
     @EnvironmentObject var history: HistoryStore
     /// "todos", "wifi" ou "cabo".
     @AppStorage("filtroConexao") private var filter = "todos"
+    @StateObject private var selection = HistorySelection()
+    /// Só para o snapshot: abre o detalhe de um teste.
+    var previewExpanded: UUID?
 
     var body: some View {
         let all = history.state.records
@@ -204,19 +264,36 @@ struct HistoryList: View {
                         VStack(spacing: 0) {
                             ForEach(Array(records.reversed().enumerated()), id: \.element.id) { i, r in
                                 if i > 0 { Divider() }
-                                row(r)
+                                let open = (previewExpanded ?? selection.expanded) == r.id
+                                Button {
+                                    withAnimation(.snappy) {
+                                        selection.expanded = open ? nil : r.id
+                                        selection.confirmingDelete = nil
+                                    }
+                                } label: {
+                                    row(r, open: open)
+                                }
+                                .buttonStyle(.plain)
+                                if open {
+                                    RecordDetails(record: r, selection: selection)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
                             }
                         }
                     }
-                    .frame(maxHeight: 150)
+                    .frame(maxHeight: (previewExpanded ?? selection.expanded) == nil ? 150 : 320)
                 }
             }
             .module()
         }
     }
 
-    private func row(_ r: SpeedRecord) -> some View {
+    private func row(_ r: SpeedRecord, open: Bool) -> some View {
         HStack(spacing: 6) {
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(open ? 90 : 0))
             Image(systemName: r.connection?.symbol ?? "questionmark")
                 .frame(width: 16)
                 .foregroundStyle(.secondary)
@@ -245,6 +322,8 @@ struct HistoryList: View {
         .font(.callout.monospacedDigit())
         .lineLimit(1)
         .padding(.vertical, 5)
+        .contentShape(Rectangle())
+        .help(open ? "Fechar detalhes" : "Ver detalhes do teste")
     }
 
     private func average(_ records: [SpeedRecord]) -> String {
@@ -253,6 +332,86 @@ struct HistoryList: View {
         let up = records.map(\.uploadMbps).reduce(0, +) / n
         return "Média de \(records.count) \(records.count == 1 ? "teste" : "testes"): ↓ \(Int(down.rounded())) · ↑ \(Int(up.rounded())) Mbps"
     }
+}
+
+/// Tudo o que foi guardado de um teste, com a opção de apagá-lo.
+struct RecordDetails: View {
+    let record: SpeedRecord
+    @ObservedObject var selection: HistorySelection
+    @EnvironmentObject var history: HistoryStore
+
+    var body: some View {
+        let r = record
+        VStack(alignment: .leading, spacing: 8) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+                line("Data", r.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year().hour().minute()))
+                line("Teste", ((r.engine ?? .apple) == .apple ? "Apple (networkQuality)" : "Operadora, estilo Speedtest")
+                     + (r.automatic ? " · automático" : ""))
+                line("Servidor", r.serverLabel ?? ServerName.friendly(r.server), detail: r.server)
+                line("Velocidade", "↓ \(mbps(r.downloadMbps)) · ↑ \(mbps(r.uploadMbps))")
+                line("Latência", "\(ms(r.idleLatencyMs)) parada · \(ms(r.loadedLatencyMs)) com carga")
+                line("Conexão", connectionLine(r))
+                if let w = r.wifi {
+                    line("Wi-Fi", [w.bandGHz.map { "\($0) GHz" }, w.channel.map { "canal \($0)" },
+                                   w.widthMHz.map { "\($0) MHz" }, w.standard].compactMap { $0 }.joined(separator: " · "))
+                    line("Sinal", "\(w.rssi) dBm (\(w.quality)) · ruído \(w.noise) dBm · margem \(w.rssi - w.noise) dB")
+                    if let link = w.linkMbps {
+                        line("Taxa do link", "\(Int(link)) Mbps")
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                if selection.confirmingDelete == r.id {
+                    Text("Apagar este teste?").foregroundStyle(.secondary)
+                    Button("Cancelar") { selection.confirmingDelete = nil }
+                    Button("Apagar", role: .destructive) {
+                        withAnimation(.snappy) {
+                            history.delete(r.id)
+                            selection.expanded = nil
+                            selection.confirmingDelete = nil
+                        }
+                    }
+                    .tint(.red)
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        selection.confirmingDelete = r.id
+                    } label: {
+                        Label("Apagar teste", systemImage: "trash")
+                    }
+                }
+            }
+            .controlSize(.small)
+        }
+        .font(.caption)
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.bottom, 6)
+    }
+
+    private func line(_ title: String, _ value: String, detail: String? = nil) -> some View {
+        GridRow {
+            Text(title).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value).textSelection(.enabled)
+                if let detail, detail != value {
+                    Text(detail).font(.caption2).foregroundStyle(.tertiary).textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    /// "Wi-Fi", ou "Cabo · USB 10/100/1000 LAN" quando o nome do adaptador acrescenta algo.
+    private func connectionLine(_ r: SpeedRecord) -> String {
+        let title = r.connection?.title ?? "—"
+        guard let adapter = r.interface.map(InterfaceName.friendly), adapter != title else { return title }
+        return "\(title) · \(adapter)"
+    }
+
+    private func mbps(_ v: Double) -> String { "\(Int(v.rounded())) Mbps" }
+    private func ms(_ v: Double?) -> String { v.map { "\(Int($0.rounded())) ms" } ?? "—" }
 }
 
 /// Seta colorida + número, compacto para as linhas do histórico.
@@ -271,6 +430,21 @@ struct CompactLabel: LabelStyle {
 struct Footer: View {
     @EnvironmentObject var controller: TestController
     @EnvironmentObject var history: HistoryStore
+
+    /// Alerta do sistema antes de apagar tudo (não dá para desfazer).
+    private func confirmClearHistory() {
+        let alert = NSAlert()
+        alert.messageText = "Limpar o histórico?"
+        alert.informativeText = "Os \(history.state.records.count) testes salvos serão apagados. Isso não pode ser desfeito."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Limpar histórico")
+        alert.addButton(withTitle: "Cancelar")
+        alert.buttons.first?.hasDestructiveAction = true
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            history.clearHistory()
+        }
+    }
 
     var body: some View {
         HStack {
@@ -316,6 +490,8 @@ struct Footer: View {
                     get: { controller.launchAtLogin },
                     set: { controller.setLaunchAtLogin($0) }))
                 Divider()
+                Button("Limpar histórico…") { confirmClearHistory() }
+                    .disabled(history.state.records.isEmpty)
                 Button("Sair") { NSApplication.shared.terminate(nil) }
             } label: {
                 Image(systemName: "gearshape")
