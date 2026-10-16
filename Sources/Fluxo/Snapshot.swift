@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// `Speedtest --snapshot <pasta>` salva PNGs do painel e sai, para conferir o
+/// `Fluxo --snapshot <pasta>` salva PNGs do painel e sai, para conferir o
 /// visual sem abrir a barra de menus (nem precisar de permissão de gravação de tela).
 @MainActor
 enum Snapshot {
@@ -61,7 +61,7 @@ enum Snapshot {
 
     /// Histórico de exemplo num arquivo temporário (o seu fica intacto).
     private static func sampleHistory(empty: Bool) -> HistoryStore {
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("speedtest-snapshot-\(empty).json")
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("fluxo-snapshot-\(empty).json")
         try? FileManager.default.removeItem(at: tmp)
         let history = HistoryStore(fileURL: tmp)
         guard !empty else { return history }
@@ -114,7 +114,7 @@ enum Snapshot {
     }
 }
 
-/// `Speedtest --teste [apple|operadora] [--cancelar-em <s>]` faz um teste real pelo mesmo
+/// `Fluxo --teste [apple|operadora] [--cancelar-em <s>]` faz um teste real pelo mesmo
 /// motor do app, mostrando a velocidade ao vivo no terminal, sem gravar no histórico.
 @MainActor
 enum SelfTest {
@@ -153,7 +153,7 @@ enum SelfTest {
     }
 }
 
-/// `Speedtest --trafego` imprime o tráfego ao vivo por alguns segundos (confere os contadores).
+/// `Fluxo --trafego` imprime o tráfego ao vivo por alguns segundos (confere os contadores).
 @MainActor
 enum TrafficSelfTest {
     static func run() {

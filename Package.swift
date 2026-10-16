@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Speedtest",
+    name: "Fluxo",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "Speedtest",
-            path: "Sources/Speedtest",
+            name: "Fluxo",
+            path: "Sources/Fluxo",
             swiftSettings: [.swiftLanguageMode(.v5), .enableUpcomingFeature("BareSlashRegexLiterals")]
         )
     ]

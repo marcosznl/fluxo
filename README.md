@@ -1,4 +1,4 @@
-# Speedtest
+# Fluxo
 
 Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone no Dock).
 
@@ -41,12 +41,12 @@ Só precisa das Command Line Tools (não precisa do Xcode):
 scripts/build.sh --install
 ```
 
-Isso gera `dist/Speedtest.app`, copia para `~/Applications` e abre. O ícone de
+Isso gera `dist/Fluxo.app`, copia para `~/Applications` e abre. O ícone de
 velocímetro aparece na barra de menus. Para sair, use a engrenagem no canto do painel.
 
 ## Ícone
 
-O ícone (setas de download e upload) é desenhado em código em `Sources/Speedtest/GaugeIcon.swift`,
+O ícone (setas de download e upload) é desenhado em código em `Sources/Fluxo/GaugeIcon.swift`,
 que gera tanto o ícone colorido do app quanto a versão de uma cor da barra de menus. Não usa
 SF Symbols, porque a licença da Apple não permite símbolos em ícones de app. Os arquivos
 gerados ficam em `Resources/AppIcon.iconset` e `Resources/AppIcon.icns`; para redesenhar:
@@ -56,22 +56,22 @@ scripts/make-icon.sh
 ```
 
 Há seis estilos desenhados (Noturno; Claro; Azul do sistema; Clássico; Setas ↓↑, o atual;
-Meia-lua sólida). Para comparar, `.build/debug/Speedtest --opcoes-icone /tmp/opcoes.png`; para
+Meia-lua sólida). Para comparar, `.build/debug/Fluxo --opcoes-icone /tmp/opcoes.png`; para
 trocar, mude `GaugeIcon.style` e rode `scripts/make-icon.sh`.
 
 ## Dados
 
-O histórico fica em `~/Library/Application Support/Speedtest/historico.json`.
+O histórico fica em `~/Library/Application Support/Fluxo/historico.json`.
 
 ## Para desenvolvimento
 
 ```bash
 swift build
-.build/debug/Speedtest --snapshot /tmp/snap   # salva PNGs do painel (claro e escuro), com histórico de exemplo
-.build/debug/Speedtest --teste apple          # teste real no terminal, sem gravar no histórico
-.build/debug/Speedtest --teste operadora      # idem, no estilo Speedtest
-.build/debug/Speedtest --teste apple --cancelar-em 6   # testa o cancelamento
-.build/debug/Speedtest --trafego                # imprime o tráfego ao vivo por 5 s
+.build/debug/Fluxo --snapshot /tmp/snap   # salva PNGs do painel (claro e escuro), com histórico de exemplo
+.build/debug/Fluxo --teste apple          # teste real no terminal, sem gravar no histórico
+.build/debug/Fluxo --teste operadora      # idem, no estilo Speedtest
+.build/debug/Fluxo --teste apple --cancelar-em 6   # testa o cancelamento
+.build/debug/Fluxo --trafego                # imprime o tráfego ao vivo por 5 s
 ```
 
 Observação: o SwiftUI deste macOS implementa `@State` como macro, que só compila com

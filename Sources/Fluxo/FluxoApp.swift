@@ -5,7 +5,7 @@ import SwiftUI
 import UserNotifications
 
 @main
-struct SpeedtestApp: App {
+struct FluxoApp: App {
     @StateObject private var controller = TestController()
 
     init() {

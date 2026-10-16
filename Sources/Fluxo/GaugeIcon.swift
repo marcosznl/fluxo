@@ -263,7 +263,7 @@ enum GaugeIcon {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Speedtest"
+        image.accessibilityDescription = "Fluxo"
         return image
     }()
 }

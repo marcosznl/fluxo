@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Speedtest</string>
+    <string>Fluxo</string>
     <key>CFBundleDisplayName</key>
-    <string>Speedtest</string>
+    <string>Fluxo</string>
     <key>CFBundleIdentifier</key>
-    <string>app.speedtest.Speedtest</string>
+    <string>app.fluxo.Fluxo</string>
     <key>CFBundleExecutable</key>
-    <string>Speedtest</string>
+    <string>Fluxo</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
