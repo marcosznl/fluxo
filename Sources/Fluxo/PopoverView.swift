@@ -221,8 +221,9 @@ struct HistoryList: View {
                 .frame(width: 16)
                 .foregroundStyle(.secondary)
                 .help(r.wifi.map { "Wi-Fi · " + $0.details } ?? r.connection?.title ?? "Conexão desconhecida")
-            Text(r.date.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
+            Text(r.date.formatted(.dateTime.day().month(.twoDigits).hour().minute()))
                 .foregroundStyle(.secondary)
+                .layoutPriority(1)
             Image(systemName: (r.engine ?? .apple).symbol)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -242,6 +243,7 @@ struct HistoryList: View {
                 .frame(width: 48, alignment: .trailing)
         }
         .font(.callout.monospacedDigit())
+        .lineLimit(1)
         .padding(.vertical, 5)
     }
 
@@ -328,13 +330,30 @@ struct Footer: View {
 
 // MARK: - Gráfico do histórico
 
-/// Download ao longo do tempo, com uma linha para cada tipo de conexão.
+/// O ponto do gráfico sob o mouse. (Classe só para viver num @StateObject: o @State do
+/// SwiftUI é uma macro que exige o Xcode completo para compilar.)
+final class ChartHover: ObservableObject {
+    @Published var date: Date?
+}
+
+/// Velocidade ao longo do tempo: uma linha só, ligando os testes em ordem, com os pontos
+/// coloridos pela conexão (Wi-Fi ou cabo).
 struct TrendChart: View {
     let records: [SpeedRecord]
+    /// Só para o snapshot: simula o mouse sobre um ponto.
+    var previewHover: Date?
+
+    @AppStorage("graficoMetrica") private var metric = "download"
+    @StateObject private var hover = ChartHover()
+
+    private var shown: [SpeedRecord] { Array(records.suffix(30)) }
+    private var isUpload: Bool { metric == "upload" }
+
+    private func value(_ r: SpeedRecord) -> Double { isUpload ? r.uploadMbps : r.downloadMbps }
 
     /// Só as conexões que aparecem nos testes, para a legenda não mostrar sobras.
     private var kinds: [ConnectionKind] {
-        ConnectionKind.allCases.filter { k in records.contains { ($0.connection ?? .outra) == k } }
+        ConnectionKind.allCases.filter { k in shown.contains { ($0.connection ?? .outra) == k } }
     }
 
     private func color(_ k: ConnectionKind) -> Color {
@@ -345,32 +364,164 @@ struct TrendChart: View {
         }
     }
 
+    private var average: Double {
+        shown.map(value).reduce(0, +) / Double(max(shown.count, 1))
+    }
+
+    /// Teto arredondado, com folga para o rótulo da média e do mouse.
+    private var yMax: Double {
+        let top = (shown.map(value).max() ?? 0) * 1.15
+        let step: Double = top > 500 ? 250 : top > 100 ? 50 : 10
+        return max(step, (top / step).rounded(.up) * step)
+    }
+
+    /// Testes do mesmo dia mostram a hora; de dias diferentes, a data.
+    private var spansDays: Bool {
+        guard let first = shown.first?.date, let last = shown.last?.date else { return false }
+        return last.timeIntervalSince(first) > 36 * 3600
+    }
+
+    /// De quantos em quantos dias rotular o eixo, para caberem até ~5 datas.
+    private var dayStride: Int {
+        guard let first = shown.first?.date, let last = shown.last?.date else { return 1 }
+        let days = Int(last.timeIntervalSince(first) / 86400) + 1
+        return max(1, Int((Double(days) / 5).rounded(.up)))
+    }
+
+    private var hovered: SpeedRecord? {
+        guard let date = previewHover ?? hover.date else { return nil }
+        return shown.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+    }
+
     var body: some View {
-        Chart(records.suffix(30)) { r in
-            let conn = (r.connection ?? .outra).title
-            LineMark(x: .value("Data", r.date), y: .value("Download", r.downloadMbps),
-                     series: .value("Conexão", conn))
-                .foregroundStyle(by: .value("Conexão", conn))
-                .interpolationMethod(.monotone)
-            PointMark(x: .value("Data", r.date), y: .value("Download", r.downloadMbps))
-                .foregroundStyle(by: .value("Conexão", conn))
-                .symbolSize(18)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                if let h = hovered {
+                    HoverReadout(record: h, isUpload: isUpload)
+                } else {
+                    Text(isUpload ? "Upload (Mbps)" : "Download (Mbps)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("Medida", selection: $metric) {
+                    Text("Download").tag("download")
+                    Text("Upload").tag("upload")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.mini)
+                .fixedSize()
+            }
+            chart
+                .frame(height: 150)
+        }
+    }
+
+    /// Cor da linha e da área: a da conexão quando só há uma; neutra quando há mais de uma.
+    private var lineColor: Color {
+        kinds.count == 1 ? color(kinds[0]) : .secondary
+    }
+
+    private var chart: some View {
+        let single = kinds.count == 1
+        return Chart {
+            ForEach(shown) { r in
+                let kind = r.connection ?? .outra
+                AreaMark(x: .value("Data", r.date), y: .value("Mbps", value(r)))
+                    .foregroundStyle(LinearGradient(
+                        colors: [lineColor.opacity(single ? 0.25 : 0.12), lineColor.opacity(0)],
+                        startPoint: .top, endPoint: .bottom))
+                LineMark(x: .value("Data", r.date), y: .value("Mbps", value(r)))
+                    .foregroundStyle(lineColor.opacity(single ? 1 : 0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                PointMark(x: .value("Data", r.date), y: .value("Mbps", value(r)))
+                    .foregroundStyle(by: .value("Conexão", kind.title))
+                    .symbol {
+                        Circle()
+                            .fill(color(kind))
+                            .frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                    }
+            }
+
+            RuleMark(y: .value("Média", average))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .foregroundStyle(.secondary.opacity(0.7))
+                .annotation(position: .top, alignment: .leading, spacing: 2) {
+                    Text("média \(Int(average.rounded()))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+            if let h = hovered {
+                RuleMark(x: .value("Data", h.date))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .foregroundStyle(.secondary.opacity(0.5))
+                PointMark(x: .value("Data", h.date), y: .value("Mbps", value(h)))
+                    .symbol {
+                        Circle()
+                            .fill(color(h.connection ?? .outra))
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                    }
+            }
         }
         .chartForegroundStyleScale(domain: kinds.map(\.title), range: kinds.map(color))
+        .chartLegend(single ? .hidden : .automatic)
+        .chartLegend(position: .bottom, alignment: .leading, spacing: 6)
+        .chartYScale(domain: 0...yMax)
         .chartYAxis {
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { _ in
-                AxisGridLine()
-                AxisValueLabel()
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(.secondary.opacity(0.3))
+                AxisValueLabel {
+                    if let mbps = v.as(Double.self) {
+                        Text(verbatim: String(Int(mbps))).monospacedDigit()
+                    }
+                }
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { _ in
-                AxisValueLabel(format: .dateTime.day().month(.twoDigits))
+            if spansDays {
+                AxisMarks(values: .stride(by: .day, count: dayStride)) { _ in
+                    AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(.secondary.opacity(0.5))
+                    AxisValueLabel(format: .dateTime.day().month(.defaultDigits), centered: false)
+                }
+            } else {
+                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                    AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(.secondary.opacity(0.5))
+                    AxisValueLabel(format: .dateTime.hour().minute())
+                }
             }
         }
-        .chartLegend(position: .top, alignment: .trailing)
+        .chartXSelection(value: $hover.date)
         .font(.caption2)
-        .frame(height: 96)
-        .accessibilityLabel("Download ao longo do tempo, por tipo de conexão")
+        .accessibilityLabel(isUpload ? "Upload ao longo do tempo" : "Download ao longo do tempo")
+    }
+}
+
+/// Os valores do ponto sob o mouse, mostrados no lugar do título do gráfico.
+struct HoverReadout: View {
+    let record: SpeedRecord
+    let isUpload: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text("\(Int((isUpload ? record.uploadMbps : record.downloadMbps).rounded())) Mbps")
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+            Group {
+                Text(record.date.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
+                if let conn = record.connection {
+                    Image(systemName: conn.symbol)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
     }
 }

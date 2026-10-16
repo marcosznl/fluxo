@@ -21,6 +21,33 @@ enum Snapshot {
                  to: out.appendingPathComponent("painel-vazio-\(mode).png"))
             save(popover(TestController(history: sampleHistory(empty: false))), appearance,
                  to: out.appendingPathComponent("painel-\(mode).png"))
+            // O gráfico do histórico: todas as conexões com o mouse num ponto, só Wi-Fi e upload.
+            let records = sampleHistory(empty: false).state.records
+            let chartCases: [(String, [SpeedRecord], Date?, String)] = [
+                ("todos-mouse", records, records[records.count - 3].date, "download"),
+                ("wifi", records.filter { $0.connection == .wifi }, nil, "download"),
+                ("upload", records, nil, "upload"),
+            ]
+            for (name, recs, hover, metric) in chartCases {
+                UserDefaults.standard.set(metric, forKey: "graficoMetrica")
+                let chart = TrendChart(records: recs, previewHover: hover)
+                    .padding(14)
+                    .frame(width: 330)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                save(chart, appearance, to: out.appendingPathComponent("grafico-\(name)-\(mode).png"))
+            }
+            UserDefaults.standard.set("download", forKey: "graficoMetrica")
+
+            // O gráfico com o seu histórico de verdade (só leitura).
+            let real = HistoryStore().state.records
+            if real.count >= 2 {
+                let chart = TrendChart(records: real)
+                    .padding(14)
+                    .frame(width: 330)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                save(chart, appearance, to: out.appendingPathComponent("grafico-seu-historico-\(mode).png"))
+            }
+
             // O velocímetro como fica durante o teste.
             for (speed, upload) in [(37.0, false), (480.0, false), (230.0, true)] {
                 let gauge = SpeedGauge(value: speed, caption: upload ? "Mbps · upload" : "Mbps · download",
