@@ -19,15 +19,31 @@ enum ServerName {
     static func friendly(_ host: String?) -> String {
         guard let host, !host.isEmpty else { return "—" }
         let provider = host.hasSuffix("aaplimg.com") || host.hasSuffix("apple.com") ? "Apple" : nil
-        guard let m = host.firstMatch(of: /^([a-z]{2})([a-z]{3})\d*-/) else {
-            return provider ?? host
-        }
+        guard let place = city(host) else { return provider ?? host }
+        return [provider, place].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// "brsao4-edge-bx-021.aaplimg.com" → "São Paulo".
+    static func city(_ host: String) -> String? {
+        guard let m = host.firstMatch(of: /^([a-z]{2})([a-z]{3})\d*-/) else { return nil }
         let country = String(m.1).uppercased()
         let code = String(m.2)
-        let place = cities[code]
+        return cities[code]
             ?? Locale.current.localizedString(forRegionCode: country).map { "\($0) (\(code.uppercased()))" }
             ?? "\(code.uppercased()), \(country)"
-        return [provider, place].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// O servidor que o networkQuality vai usar, pela mesma configuração que ele consulta.
+    /// Serve só para mostrar "de onde" durante o teste; o servidor real vem no resultado.
+    static func appleTestServer() async -> String? {
+        struct Config: Decodable {
+            let test_endpoint: String?
+        }
+        let url = URL(string: "https://mensura.cdn-apple.com/api/v1/gm/config")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+        return (try? JSONDecoder().decode(Config.self, from: data))?.test_endpoint
     }
 }
 

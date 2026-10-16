@@ -26,6 +26,7 @@ final class SpeedTester: ObservableObject {
     @Published private(set) var liveDownload: Double = 0
     @Published private(set) var liveUpload: Double = 0
     @Published private(set) var status: String?
+    /// De onde é o servidor do teste em andamento, ex.: "servidores da Apple em São Paulo".
     @Published private(set) var serverLabel: String?
     /// Aviso sobre o último teste (por exemplo, quando caiu para o teste da Apple).
     @Published private(set) var notice: String?
@@ -64,7 +65,13 @@ final class SpeedTester: ObservableObject {
 
         switch engine {
         case .apple:
-            serverLabel = "Apple"
+            serverLabel = "servidores da Apple"
+            Task { [weak self] in
+                if let host = await ServerName.appleTestServer(), let city = ServerName.city(host),
+                   self?.isRunning == true {
+                    self?.serverLabel = "servidores da Apple em \(city)"
+                }
+            }
             let running = RunningProcess()
             // -s: sequencial, download e upload medidos separadamente.
             let output = try await withTaskCancellationHandler {
@@ -101,6 +108,7 @@ final class SpeedTester: ObservableObject {
         liveUpload = up
         // Teste sequencial: o upload só começa depois do download.
         phase = up > 0 ? .upload : (down > 0 ? .download : .starting)
+        if phase != .starting { status = nil }
     }
 
     // MARK: - Processo

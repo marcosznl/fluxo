@@ -40,7 +40,7 @@ enum OperatorTest {
         await cb.status("Escolhendo servidor…")
         let server = try await pickServer()
         try Task.checkCancellation()
-        await cb.server(server.label)
+        await cb.server("servidor da \(server.sponsor) em \(server.name)")
 
         await cb.status("Medindo latência…")
         let pings = PingSession()
