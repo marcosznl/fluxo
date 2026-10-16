@@ -29,7 +29,7 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Velocidade da internet").font(.headline)
+                Text("Fluxo").font(.headline)
                 Spacer()
                 if let last = history.last, !tester.isRunning {
                     Text(last.date.formatted(.relative(presentation: .named)))
