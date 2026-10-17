@@ -49,6 +49,39 @@ enum Snapshot {
                 save(list, appearance, to: out.appendingPathComponent("historico-detalhe-\(mode).png"))
             }
 
+            // Widget pequeno e médio, como aparece na mesa ou na Central de Notificações.
+            for (name, recs) in [("exemplo", sample.state.records), ("seu", HistoryStore().state.records), ("vazio", [])] {
+                for (size, medium) in [("pequeno", false), ("medio", true)] {
+                    let widget = FluxoWidgetView(records: recs, medium: medium)
+                        .padding(14)
+                        .frame(width: medium ? 344 : 164, height: 164)
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .padding(12)
+                        .background(Color(nsColor: .underPageBackgroundColor))
+                    save(widget, appearance, to: out.appendingPathComponent("widget-\(size)-\(name)-\(mode).png"))
+                }
+            }
+
+            // Widget "Usando a internet": exemplo, o que o app já gravou e o estado inicial.
+            let appsSample = AppsSnapshot(date: .now.addingTimeInterval(-180), intervalMinutes: 15, apps: [
+                .init(name: "Safari", downBytes: 320_000_000, upBytes: 12_000_000, iconFile: nil),
+                .init(name: "Música", downBytes: 85_000_000, upBytes: 1_200_000, iconFile: nil),
+                .init(name: "iCloud Drive", downBytes: 4_000_000, upBytes: 60_000_000, iconFile: nil),
+                .init(name: "Discord", downBytes: 22_000_000, upBytes: 3_000_000, iconFile: nil),
+                .init(name: "DNS do sistema", downBytes: 900_000, upBytes: 300_000, iconFile: nil),
+            ])
+            for (name, snap) in [("exemplo", Optional(appsSample)), ("seu", AppsSnapshot.load()), ("vazio", nil)] {
+                for (size, medium) in [("pequeno", false), ("medio", true)] {
+                    let widget = AppsWidgetView(snapshot: snap, medium: medium)
+                        .padding(14)
+                        .frame(width: medium ? 344 : 164, height: 164)
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .padding(12)
+                        .background(Color(nsColor: .underPageBackgroundColor))
+                    save(widget, appearance, to: out.appendingPathComponent("apps-\(size)-\(name)-\(mode).png"))
+                }
+            }
+
             // O gráfico com o seu histórico de verdade (só leitura).
             let real = HistoryStore().state.records
             if real.count >= 2 {
@@ -232,6 +265,28 @@ enum AppTrafficSelfTest {
                     exit(0)
                 }
             }
+        }
+    }
+}
+
+/// `Fluxo --apps-intervalo <s>` faz duas leituras do nettop com <s> segundos de distância e
+/// imprime o que o widget "Usando a internet" mostraria (sem gravar nada).
+@MainActor
+enum AppUsageSelfTest {
+    static func run(seconds: Double) {
+        let before = AppUsageSampler.readTotals()
+        print("Primeira leitura: \(before.count) processos. Esperando \(Int(seconds)) s…")
+        Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            let top = AppUsageSampler.topUsage(before: before, now: AppUsageSampler.readTotals())
+            let f = ByteCountFormatter()
+            f.countStyle = .decimal
+            for item in top {
+                let icon = AppTrafficMonitor.icon(for: item.name, pid: item.pid) == nil ? "" : "  [ícone]"
+                print("  \(item.name)  ↓ \(f.string(fromByteCount: Int64(item.rx)))  ↑ \(f.string(fromByteCount: Int64(item.tx)))\(icon)")
+            }
+            if top.isEmpty { print("  (ninguém passou de 100 KB)") }
+            exit(0)
         }
     }
 }

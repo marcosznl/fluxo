@@ -663,7 +663,7 @@ struct TrendChart: View {
                 AxisMarks(values: .stride(by: .day, count: dayStride)) { _ in
                     AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(.secondary.opacity(0.5))
-                    AxisValueLabel(format: .dateTime.day().month(.defaultDigits), centered: false)
+                    AxisValueLabel(format: .dateTime.day().month(.defaultDigits))
                 }
             } else {
                 AxisMarks(values: .automatic(desiredCount: 4)) { _ in

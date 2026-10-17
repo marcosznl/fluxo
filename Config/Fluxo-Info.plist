@@ -7,9 +7,9 @@
     <key>CFBundleDisplayName</key>
     <string>Fluxo</string>
     <key>CFBundleIdentifier</key>
-    <string>app.fluxo.Fluxo</string>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleExecutable</key>
-    <string>Fluxo</string>
+    <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
@@ -23,6 +23,21 @@
     <!-- Só na barra de menus: sem ícone no Dock nem no Cmd-Tab. -->
     <key>LSUIElement</key>
     <true/>
+    <!-- O widget abre fluxo://testar para pedir um teste. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>fluxo</string>
+            </array>
+        </dict>
+    </array>
+    <!-- Pasta compartilhada com o widget (o histórico fica nela). -->
+    <key>FluxoAppGroup</key>
+    <string>$(TeamIdentifierPrefix)app.fluxo</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
 </dict>

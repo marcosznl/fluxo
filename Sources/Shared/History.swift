@@ -1,4 +1,17 @@
+import Combine
 import Foundation
+import WidgetKit
+
+/// O resultado de um teste, antes de virar um registro do histórico.
+struct SpeedResult {
+    var downloadMbps: Double
+    var uploadMbps: Double
+    var idleLatencyMs: Double?
+    var loadedLatencyMs: Double?   // latência durante o download
+    var server: String?            // nome técnico, ex.: brsao4-edge-bx-021.aaplimg.com
+    var serverLabel: String?       // nome amigável, ex.: Apple · São Paulo
+    var interface: String?
+}
 
 struct SpeedRecord: Codable, Identifiable {
     var id = UUID()
@@ -39,22 +52,36 @@ struct SavedState: Codable {
     var autoOnlyOnAC: Bool?     // nil = sim
 }
 
-/// Histórico dos testes e preferências, salvos num JSON local.
+/// Histórico dos testes e preferências, salvos num JSON na pasta compartilhada com o widget.
 @MainActor
 final class HistoryStore: ObservableObject {
     @Published private(set) var state: SavedState
 
     private let fileURL: URL
 
+    nonisolated static var legacyFileURL: URL {
+        SharedFiles.legacyDirectory.appendingPathComponent("historico.json")
+    }
+
     nonisolated static var defaultFileURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Fluxo", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("historico.json")
+        SharedFiles.directory.appendingPathComponent("historico.json")
+    }
+
+    /// Leitura simples, para o widget (que só lê, fora da thread principal).
+    nonisolated static func loadRecords(from url: URL = defaultFileURL) -> [SpeedRecord] {
+        guard let data = try? Data(contentsOf: url),
+              let saved = try? decoder.decode(SavedState.self, from: data) else { return [] }
+        return saved.records
     }
 
     init(fileURL: URL = HistoryStore.defaultFileURL) {
         self.fileURL = fileURL
+        // Primeira vez com o App Group: traz o histórico da pasta antiga (que fica como cópia).
+        let legacy = Self.legacyFileURL
+        if fileURL != legacy, !FileManager.default.fileExists(atPath: fileURL.path),
+           FileManager.default.fileExists(atPath: legacy.path) {
+            try? FileManager.default.copyItem(at: legacy, to: fileURL)
+        }
         if let data = try? Data(contentsOf: fileURL),
            let saved = try? Self.decoder.decode(SavedState.self, from: data) {
             state = saved
@@ -122,14 +149,14 @@ final class HistoryStore: ObservableObject {
         save()
     }
 
-    private static let encoder: JSONEncoder = {
+    nonisolated private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
         return e
     }()
 
-    private static let decoder: JSONDecoder = {
+    nonisolated private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
@@ -138,5 +165,7 @@ final class HistoryStore: ObservableObject {
     private func save() {
         guard let data = try? Self.encoder.encode(state) else { return }
         try? data.write(to: fileURL, options: .atomic)
+        // O widget redesenha com o histórico novo.
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

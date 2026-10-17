@@ -1,4 +1,5 @@
 import AppKit
+import WidgetKit
 
 /// Um app e quanto ele está usando da rede agora.
 struct AppUsage: Identifiable {
@@ -112,7 +113,7 @@ final class AppTrafficMonitor: ObservableObject {
         return name.trimmingCharacters(in: .whitespaces)
     }
 
-    private static func icon(for name: String, pid: Int32) -> NSImage? {
+    static func icon(for name: String, pid: Int32) -> NSImage? {
         if let app = NSRunningApplication(processIdentifier: pid), app.bundleURL?.pathExtension == "app",
            mainAppName(app.localizedName ?? "") == name {
             return app.icon
@@ -150,5 +151,109 @@ private final class NettopParser: @unchecked Sendable {
               let pid = Int32(cols[0][cols[0].index(after: dot)...]),
               let rx = Double(cols[1]), let tx = Double(cols[2]) else { return }
         block.append((String(cols[0][..<dot]), pid, rx, tx))
+    }
+}
+
+/// A cada 15 minutos, lê os totais do nettop e grava quem mais usou a rede nesse intervalo,
+/// para o widget "Usando a internet". Uma leitura dessas leva centésimos de segundo; não
+/// precisa deixar o nettop rodando.
+@MainActor
+final class AppUsageSampler {
+    static let intervalMinutes = 15
+    static let widgetKind = "FluxoApps"
+
+    private var timer: Timer?
+    private var previous: (totals: [String: (rx: Double, tx: Double)], at: Date)?
+
+    func start() {
+        guard timer == nil else { return }
+        sample()   // a primeira leitura é só a base de comparação
+        timer = Timer.scheduledTimer(withTimeInterval: Double(Self.intervalMinutes) * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.sample() }
+        }
+    }
+
+    private func sample() {
+        Task.detached(priority: .utility) {
+            let totals = Self.readTotals()
+            await MainActor.run { self.consume(totals) }
+        }
+    }
+
+    /// Totais desde que cada processo abriu, por "nome.pid".
+    nonisolated static func readTotals() -> [String: (rx: Double, tx: Double)] {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
+        p.arguments = ["-P", "-L", "1", "-x", "-n", "-J", "bytes_in,bytes_out"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return [:] }
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        p.waitUntilExit()
+        var totals: [String: (rx: Double, tx: Double)] = [:]
+        for line in out.split(separator: "\n") {
+            let cols = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard cols.count >= 3, cols[0].contains("."), let rx = Double(cols[1]), let tx = Double(cols[2]) else { continue }
+            totals[String(cols[0])] = (rx, tx)
+        }
+        return totals
+    }
+
+    private func consume(_ totals: [String: (rx: Double, tx: Double)]) {
+        defer { previous = (totals, .now) }
+        guard let previous, !totals.isEmpty else { return }
+
+        let top = Self.topUsage(before: previous.totals, now: totals)
+
+        let icons = AppsSnapshot.iconsDirectory
+        try? FileManager.default.removeItem(at: icons)
+        try? FileManager.default.createDirectory(at: icons, withIntermediateDirectories: true)
+        let apps = top.enumerated().map { i, item in
+            let file = "\(i).png"
+            let saved = AppTrafficMonitor.icon(for: item.name, pid: item.pid)
+                .flatMap { Self.png($0) }
+                .map { (try? $0.write(to: icons.appendingPathComponent(file))) != nil } ?? false
+            return AppsSnapshot.App(name: item.name, downBytes: item.rx, upBytes: item.tx,
+                                    iconFile: saved ? "icones/\(file)" : nil)
+        }
+        let minutes = max(1, Int((Date.now.timeIntervalSince(previous.at) / 60).rounded()))
+        AppsSnapshot(date: .now, intervalMinutes: minutes, apps: apps).save()
+        WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+    }
+
+    /// Os 5 apps que mais usaram a rede entre duas leituras. Processo novo conta tudo;
+    /// contador que zerou conta nada. Auxiliares somam no app principal.
+    static func topUsage(before: [String: (rx: Double, tx: Double)], now: [String: (rx: Double, tx: Double)])
+        -> [(name: String, rx: Double, tx: Double, pid: Int32)] {
+        var grouped: [String: (rx: Double, tx: Double, pid: Int32)] = [:]
+        for (key, current) in now {
+            guard let dot = key.lastIndex(of: "."), let pid = Int32(key[key.index(after: dot)...]) else { continue }
+            let old = before[key] ?? (0, 0)
+            let rx = max(0, current.rx - old.rx)
+            let tx = max(0, current.tx - old.tx)
+            guard rx + tx > 0 else { continue }
+            let name = AppTrafficMonitor.displayName(process: String(key[..<dot]), pid: pid)
+            let g = grouped[name] ?? (0, 0, pid)
+            grouped[name] = (g.rx + rx, g.tx + tx, g.pid)
+        }
+        return grouped
+            .filter { $0.value.rx + $0.value.tx >= 100_000 }   // ignora o que ficou abaixo de 100 KB
+            .sorted { $0.value.rx + $0.value.tx > $1.value.rx + $1.value.tx }
+            .prefix(5)
+            .map { ($0.key, $0.value.rx, $0.value.tx, $0.value.pid) }
+    }
+
+    /// Ícone em 64 × 64, pequeno o bastante para o widget.
+    private static func png(_ image: NSImage) -> Data? {
+        let size = 64
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
     }
 }

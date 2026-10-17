@@ -6,7 +6,8 @@ import UserNotifications
 
 @main
 struct FluxoApp: App {
-    @StateObject private var controller = TestController()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    private var controller: TestController { delegate.controller }
 
     init() {
         let args = CommandLine.arguments
@@ -28,6 +29,10 @@ struct FluxoApp: App {
         if let i = args.firstIndex(of: "--opcoes-icone"), i + 1 < args.count {
             try? GaugeIcon.writeOptionsSheet(to: URL(fileURLWithPath: args[i + 1]))
             exit(0)
+        }
+        if let i = args.firstIndex(of: "--apps-intervalo") {
+            let seconds = args.dropFirst(i + 1).first.flatMap(Double.init) ?? 15
+            DispatchQueue.main.async { AppUsageSelfTest.run(seconds: seconds) }
         }
         if args.contains("--apps") {
             DispatchQueue.main.async { AppTrafficSelfTest.run() }
@@ -97,6 +102,25 @@ struct MenuBarLabel: View {
             if let text {
                 Text(text).monospacedDigit()
             }
+        }
+    }
+}
+
+/// Dono do coordenador dos testes desde o lançamento do app, para atender o fluxo://testar
+/// que o botão do widget abre, esteja o app aberto ou não.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let controller = TestController()
+    private let appUsage = AppUsageSampler()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Nos modos de conferência (--snapshot, --teste…) não grava nada para o widget.
+        if CommandLine.arguments.count == 1 { appUsage.start() }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if urls.contains(where: { $0.scheme == "fluxo" && $0.host == "testar" }) {
+            controller.start()
         }
     }
 }
