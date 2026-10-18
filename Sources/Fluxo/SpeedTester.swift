@@ -1,5 +1,15 @@
 import Foundation
 
+struct SpeedResult {
+    var downloadMbps: Double
+    var uploadMbps: Double
+    var idleLatencyMs: Double?
+    var loadedLatencyMs: Double?   // latência durante o download
+    var server: String?            // nome técnico, ex.: brsao4-edge-bx-021.aaplimg.com
+    var serverLabel: String?       // nome amigável, ex.: Apple · São Paulo
+    var interface: String?
+}
+
 enum TestPhase: Equatable {
     case idle, starting, download, upload
 }
