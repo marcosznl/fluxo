@@ -2,6 +2,8 @@
 
 Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone no Dock).
 
+**Requer macOS 14 Sonoma ou mais novo.**
+
 <p align="center">
   <img src="docs/painel.png" width="322" alt="O painel do Fluxo: velocímetro, resultado do último teste, apps usando a internet e histórico">
   &nbsp;&nbsp;
