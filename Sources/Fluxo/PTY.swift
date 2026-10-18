@@ -10,7 +10,7 @@ enum PTY {
         let status: Int32
     }
 
-    /// `collect: false` não acumula a saída (para programas que rodam sem parar, como o nettop).
+    /// `collect: false` não acumula a saída (para programas que rodam sem parar).
     static func run(_ path: String, _ arguments: [String], running: RunningProcess, collect: Bool = true,
                     onLine: @escaping @Sendable (String) -> Void) async throws -> Output {
         try await withCheckedThrowingContinuation { cont in

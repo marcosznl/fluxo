@@ -12,8 +12,8 @@ struct AppUsage: Identifiable {
 }
 
 /// Quem está usando a internet agora, lido do `nettop` (já vem no macOS). Só roda com o
-/// painel aberto: o nettop gasta um pouco de processador, e ninguém está olhando a lista
-/// com o painel fechado.
+/// painel aberto. A cada 2 s faz uma leitura avulsa (`-L 1`, uns 10 ms de processador) e
+/// compara com a anterior: o `nettop` contínuo (`-L 0`) fica girando a ~100% de CPU.
 @MainActor
 final class AppTrafficMonitor: ObservableObject {
     @Published private(set) var top: [AppUsage] = []
@@ -22,45 +22,74 @@ final class AppTrafficMonitor: ObservableObject {
     @Published private(set) var hasReading = false
 
     static let interval: Double = 2
-    private var running: RunningProcess?
-
-    /// Painel aberto há mais tempo que isso sem ser fechado: desliga por segurança.
-    private static let maxRunSeconds: Double = 600
-    private var watchdog: Timer?
+    private var loop: Task<Void, Never>?
 
     func start() {
-        guard running == nil else { return }
-        watchdog = Timer.scheduledTimer(withTimeInterval: Self.maxRunSeconds, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.stop() }
-        }
-        let running = RunningProcess()
-        self.running = running
+        guard loop == nil else { return }
         isRunning = true
-        let parser = NettopParser { [weak self] bytes in
-            Task { @MainActor in self?.publish(bytes) }
-        }
-        Task {
-            // -P por processo, -d diferença desde a amostra anterior, -x números exatos,
-            // -L 0 sem parar, -s a cada 2 s, só bytes recebidos e enviados.
-            _ = try? await PTY.run(
-                "/usr/bin/nettop",
-                ["-P", "-d", "-x", "-n", "-L", "0", "-s", String(Int(Self.interval)), "-J", "bytes_in,bytes_out"],
-                running: running, collect: false) { parser.consume($0) }
+        loop = Task { [weak self] in
+            var previous: [String: (rx: Double, tx: Double)]?
+            var previousAt = Date.now
+            while !Task.isCancelled {
+                let totals = await Task.detached { Self.readTotals() }.value
+                let now = Date.now
+                if Task.isCancelled { break }
+                if let previous, let totals {
+                    self?.publish(Self.deltas(previous, totals), seconds: now.timeIntervalSince(previousAt))
+                }
+                if totals != nil {
+                    previous = totals
+                    previousAt = now
+                }
+                try? await Task.sleep(for: .seconds(Self.interval))
+            }
         }
     }
 
     func stop() {
-        watchdog?.invalidate()
-        watchdog = nil
-        running?.terminate()
-        running = nil
+        loop?.cancel()
+        loop = nil
         isRunning = false
         hasReading = false
         top = []
     }
 
-    private func publish(_ bytes: [(process: String, pid: Int32, rx: Double, tx: Double)]) {
-        guard isRunning else { return }
+    /// Totais desde que cada processo abriu, por "nome.pid". Saída em CSV: o cabeçalho
+    /// ",bytes_in,bytes_out," e uma linha por processo ("nome.pid,recebidos,enviados,").
+    nonisolated private static func readTotals() -> [String: (rx: Double, tx: Double)]? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
+        process.arguments = ["-P", "-x", "-n", "-L", "1", "-J", "bytes_in,bytes_out"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        var totals: [String: (rx: Double, tx: Double)] = [:]
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            let cols = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard cols.count >= 3, let rx = Double(cols[1]), let tx = Double(cols[2]) else { continue }
+            totals[String(cols[0])] = (rx, tx)
+        }
+        return totals
+    }
+
+    /// Quanto cada processo trafegou entre duas leituras. Processo novo conta inteiro.
+    nonisolated private static func deltas(_ before: [String: (rx: Double, tx: Double)],
+                                           _ now: [String: (rx: Double, tx: Double)])
+        -> [(process: String, pid: Int32, rx: Double, tx: Double)] {
+        now.compactMap { key, v in
+            guard let dot = key.lastIndex(of: "."), let pid = Int32(key[key.index(after: dot)...]) else { return nil }
+            let old = before[key] ?? (0, 0)
+            guard v.rx >= old.rx, v.tx >= old.tx else { return nil }   // pid reaproveitado
+            return (String(key[..<dot]), pid, v.rx - old.rx, v.tx - old.tx)
+        }
+    }
+
+    private func publish(_ bytes: [(process: String, pid: Int32, rx: Double, tx: Double)], seconds: Double) {
+        guard isRunning, seconds > 0 else { return }
         hasReading = true
         // Junta processos do mesmo app (auxiliares, abas, renderizadores).
         var grouped: [String: (rx: Double, tx: Double, pid: Int32)] = [:]
@@ -71,7 +100,7 @@ final class AppTrafficMonitor: ObservableObject {
         }
         top = grouped
             .map { name, v in
-                AppUsage(name: name, downBps: v.rx * 8 / Self.interval, upBps: v.tx * 8 / Self.interval,
+                AppUsage(name: name, downBps: v.rx * 8 / seconds, upBps: v.tx * 8 / seconds,
                          icon: Self.icon(for: name, pid: v.pid))
             }
             .filter { $0.totalBps >= 1_000 }   // ignora o que está abaixo de 1 kbps
@@ -119,36 +148,5 @@ final class AppTrafficMonitor: ObservableObject {
         }
         // Auxiliar: usa o ícone do app principal que está aberto.
         return NSWorkspace.shared.runningApplications.first { $0.localizedName == name }?.icon
-    }
-}
-
-/// Lê a saída do nettop em CSV: cada amostra começa com o cabeçalho ",bytes_in,bytes_out,"
-/// e traz uma linha por processo ("nome.pid,recebidos,enviados,").
-private final class NettopParser: @unchecked Sendable {
-    private let lock = NSLock()
-    private var block: [(process: String, pid: Int32, rx: Double, tx: Double)] = []
-    private var samples = 0
-    private let onSample: @Sendable ([(process: String, pid: Int32, rx: Double, tx: Double)]) -> Void
-
-    init(onSample: @escaping @Sendable ([(process: String, pid: Int32, rx: Double, tx: Double)]) -> Void) {
-        self.onSample = onSample
-    }
-
-    func consume(_ line: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        if line.hasPrefix(",bytes_in") {
-            // O cabeçalho fecha a amostra anterior. A primeira traz os totais desde que cada
-            // processo abriu; só a partir da segunda é "quanto passou nos últimos 2 s".
-            if samples >= 2 { onSample(block) }
-            samples += 1
-            block = []
-            return
-        }
-        let cols = line.split(separator: ",", omittingEmptySubsequences: false)
-        guard cols.count >= 3, let dot = cols[0].lastIndex(of: "."),
-              let pid = Int32(cols[0][cols[0].index(after: dot)...]),
-              let rx = Double(cols[1]), let tx = Double(cols[2]) else { return }
-        block.append((String(cols[0][..<dot]), pid, rx, tx))
     }
 }
