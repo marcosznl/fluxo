@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Escala não linear, como a do Speedtest: cada marca ocupa o mesmo ângulo, então
+/// Escala não linear: cada marca ocupa o mesmo ângulo, então
 /// velocidades baixas não ficam espremidas no começo do arco.
 enum GaugeScale {
     static let marks: [Double] = [0, 5, 10, 50, 100, 250, 500, 750, 1000]

@@ -70,7 +70,7 @@ enum OperatorTest {
             let (data, _) = try await URLSession.shared.data(from: list)
             all = try JSONDecoder().decode([Server].self, from: data)
         } catch {
-            throw SpeedTestError(message: "Não consegui buscar a lista de servidores do Speedtest.")
+            throw SpeedTestError(message: "Não consegui buscar a lista de servidores de teste.")
         }
         // Os da operadora e mais os 4 mais próximos; fica o de menor latência,
         // dando preferência aos da operadora quando algum responde.
@@ -87,7 +87,7 @@ enum OperatorTest {
         }
         let byLatency = alive.sorted { $0.1 < $1.1 }
         guard let pick = byLatency.first(where: { $0.0.isOwnISP }) ?? byLatency.first else {
-            throw SpeedTestError(message: "Nenhum servidor do Speedtest respondeu.")
+            throw SpeedTestError(message: "Nenhum servidor de teste respondeu.")
         }
         return pick.0
     }

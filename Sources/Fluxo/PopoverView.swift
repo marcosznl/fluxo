@@ -345,7 +345,7 @@ struct RecordDetails: View {
         VStack(alignment: .leading, spacing: 8) {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
                 line("Data", r.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year().hour().minute()))
-                line("Teste", ((r.engine ?? .apple) == .apple ? "Apple (networkQuality)" : "Operadora, estilo Speedtest")
+                line("Teste", ((r.engine ?? .apple) == .apple ? "Apple (networkQuality)" : "Operadora")
                      + (r.automatic ? " · automático" : ""))
                 line("Servidor", r.serverLabel ?? ServerName.friendly(r.server), detail: r.server)
                 line("Velocidade", "↓ \(mbps(r.downloadMbps)) · ↑ \(mbps(r.uploadMbps))")
@@ -460,11 +460,11 @@ struct Footer: View {
             .lineLimit(1)
             Spacer()
             Menu {
-                Picker("Servidor do teste", selection: Binding(
+                Picker("Servidor", selection: Binding(
                     get: { history.engine },
                     set: { history.setEngine($0) })) {
                     Text("Apple (padrão)").tag(TestEngine.apple)
-                    Text("Operadora, estilo Speedtest").tag(TestEngine.operadora)
+                    Text("Operadora").tag(TestEngine.operadora)
                 }
                 Divider()
                 Picker("Barra de menus", selection: Binding(

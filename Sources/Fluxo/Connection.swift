@@ -24,7 +24,7 @@ enum TestEngine: String, Codable, CaseIterable, Identifiable {
     var explanation: String {
         switch self {
         case .apple: "Teste da Apple (networkQuality): mede até a rede da Apple em São Paulo."
-        case .operadora: "Estilo Speedtest: mede até um servidor da sua operadora (ou o mais rápido por perto)."
+        case .operadora: "Teste da operadora: mede até um servidor da sua operadora (ou o mais rápido por perto)."
         }
     }
 }

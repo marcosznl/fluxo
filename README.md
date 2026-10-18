@@ -28,11 +28,9 @@ Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone 
 - Dois tipos de teste, escolhidos na engrenagem (o padrão é o da Apple):
   - **Apple**: o `networkQuality` da própria Apple, até a rede da Apple (São Paulo).
     Mostra o que você sente no uso real.
-  - **Operadora** (estilo Speedtest): até um servidor da rede Speedtest (Ookla) perto de
-    você, de preferência da sua operadora (no caso da Nio, os da V.tal). Usa a lista pública
-    de servidores e os endpoints HTTPS deles, com 8 conexões em paralelo. Não é uma API
-    oficial da Ookla, então pode mudar no futuro. Se ela falhar, o app cai sozinho para o
-    teste da Apple e avisa.
+  - **Operadora**: até um servidor de teste perto de você, de preferência da sua operadora
+    (no caso da Nio, os da V.tal), com 8 conexões em paralelo. Se ele falhar, o app cai
+    sozinho para o teste da Apple e avisa.
 - Velocímetro em meia-lua (escala 0 · 5 · 10 · 50 · 100 · 250 · 500 · 750 · 1G) que enche
   ao vivo: azul no download, roxo no upload.
 - Resultado: download, upload, latência e latência com carga (a latência enquanto a
@@ -50,7 +48,7 @@ Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone 
 - Teste automático (a cada 1, 3, 6 ou 12 horas) que se adia sozinho no hotspot do celular,
   no Modo de Poucos Dados e, se você quiser, na bateria. Ele só notifica quando algo foge
   do normal: falha, ou download abaixo da metade do típico para aquela conexão.
-- Ajustes na engrenagem: servidor do teste, o que mostrar na barra de menus, teste
+- Ajustes na engrenagem: servidor, o que mostrar na barra de menus, teste
   automático, "automático só no carregador" e abrir ao iniciar a sessão.
 - Segue o modo claro/escuro do sistema.
 
@@ -78,7 +76,7 @@ O histórico fica em `~/Library/Application Support/Fluxo/historico.json`.
 swift build
 .build/debug/Fluxo --snapshot /tmp/snap   # salva PNGs do painel (claro e escuro), com histórico de exemplo
 .build/debug/Fluxo --teste apple          # teste real no terminal, sem gravar no histórico
-.build/debug/Fluxo --teste operadora      # idem, no estilo Speedtest
+.build/debug/Fluxo --teste operadora      # idem, até o servidor da operadora
 .build/debug/Fluxo --teste apple --cancelar-em 6   # testa o cancelamento
 .build/debug/Fluxo --trafego                # imprime o tráfego ao vivo por 5 s
 .build/debug/Fluxo --apps                   # imprime os apps que mais usam a rede por 10 s
