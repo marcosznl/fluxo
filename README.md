@@ -3,10 +3,7 @@
 Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone no Dock).
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/painel-escuro.png">
-    <img src="docs/painel-claro.png" width="330" alt="O painel do Fluxo: velocímetro, resultado do último teste e histórico">
-  </picture>
+  <img src="docs/painel.png" width="322" alt="O painel do Fluxo: velocímetro, resultado do último teste, apps usando a internet e histórico">
   &nbsp;&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/historico-detalhe-escuro.png">
