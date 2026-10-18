@@ -16,6 +16,12 @@ struct FluxoApp: App {
                 exit(0)
             }
         }
+        if let i = args.firstIndex(of: "--prototipo-rede"), i + 1 < args.count {
+            DispatchQueue.main.async {
+                Snapshot.renderNetworkPrototype(to: args[i + 1])
+                exit(0)
+            }
+        }
         if let i = args.firstIndex(of: "--gerar-icone"), i + 1 < args.count {
             do {
                 try GaugeIcon.writeIconset(to: URL(fileURLWithPath: args[i + 1]))

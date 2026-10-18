@@ -97,6 +97,55 @@ enum Snapshot {
         }
     }
 
+    /// PROTÓTIPO da rede de Macs: o painel com "Outros Macs" e as telas de pareamento.
+    static func renderNetworkPrototype(to dir: String) {
+        let out = URL(fileURLWithPath: dir)
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        let controller = TestController(history: sampleHistory(empty: false))
+        for (mode, appearance) in [("claro", NSAppearance.Name.aqua), ("escuro", .darkAqua)] {
+            let panel = VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Fluxo").font(.headline)
+                    Spacer()
+                    Text("há 12 minutos").font(.caption).foregroundStyle(.secondary)
+                }
+                SpeedGauge(value: 529, caption: "Mbps · download", colors: PhaseColors.download)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+                Button {} label: {
+                    Label("Iniciar teste", systemImage: "play.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                Metrics()
+                OtherMacsPreview()
+            }
+            .padding(14)
+            .frame(width: 330)
+            .environmentObject(controller)
+            .environmentObject(controller.history)
+            .environmentObject(controller.tester)
+            .background(Color(nsColor: .windowBackgroundColor))
+            save(panel, appearance, to: out.appendingPathComponent("rede-painel-\(mode).png"))
+
+            let pairing = HStack(alignment: .top, spacing: 24) {
+                VStack(spacing: 6) {
+                    Text("Neste Mac").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    PairingPreview()
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                }
+                VStack(spacing: 6) {
+                    Text("No iMac do Escritório").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    PairingCodePreview()
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .padding(20)
+            .background(Color(nsColor: .underPageBackgroundColor))
+            save(pairing, appearance, to: out.appendingPathComponent("rede-pareamento-\(mode).png"))
+        }
+    }
+
     /// Histórico de exemplo num arquivo temporário (o seu fica intacto).
     private static func sampleHistory(empty: Bool) -> HistoryStore {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("fluxo-snapshot-\(empty).json")
