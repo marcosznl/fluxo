@@ -1,8 +1,18 @@
-# Fluxo
+<p align="center">
+  <img src="docs/icone.png" width="128" alt="Ícone do Fluxo">
+</p>
 
-Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone no Dock).
+<h1 align="center">Fluxo</h1>
 
-**Requer macOS 14 Sonoma ou mais novo.**
+<p align="center">
+  Teste de velocidade da internet e tráfego ao vivo na barra de menus do macOS.<br>
+  Sem ícone no Dock, sem bibliotecas de terceiros.
+</p>
+
+<p align="center">
+  <a href="https://github.com/marcosznl/fluxo/releases/latest"><b>⬇︎ Baixar o DMG</b></a>
+  &nbsp;·&nbsp; macOS 14 Sonoma ou mais novo &nbsp;·&nbsp; Apple Silicon &nbsp;·&nbsp; 0,8 MB
+</p>
 
 <p align="center">
   <img src="docs/painel.png" width="322" alt="O painel do Fluxo: velocímetro, resultado do último teste, apps usando a internet e histórico">
@@ -54,7 +64,15 @@ Teste de velocidade da internet que fica na barra de menus do macOS (sem ícone 
 Usa só o que vem no macOS (SwiftUI, Charts, CoreWLAN, Network, SystemConfiguration, `networkQuality`).
 Não há bibliotecas de terceiros. Cada teste consome em torno de 1 GB numa fibra de 500 Mb.
 
-## Compilar e instalar
+## Instalar
+
+1. Baixe o `.dmg` na [página de releases](https://github.com/marcosznl/fluxo/releases/latest),
+   abra e arraste o Fluxo para **Aplicativos**.
+2. O app não é notarizado pela Apple, então o macOS bloqueia na primeira vez. No macOS 14,
+   clique com o botão direito no Fluxo → **Abrir**. No macOS 15 ou mais novo, tente abrir e
+   depois vá em Ajustes do Sistema → Privacidade e Segurança → **Abrir Mesmo Assim**.
+
+## Compilar
 
 Só precisa das Command Line Tools (não precisa do Xcode):
 
@@ -84,3 +102,7 @@ swift build
 
 Observação: o SwiftUI deste macOS implementa `@State` como macro, que só compila com
 o Xcode completo. Por isso o código usa `@StateObject` e `@AppStorage` no lugar.
+
+## Licença
+
+[MIT](LICENSE).
