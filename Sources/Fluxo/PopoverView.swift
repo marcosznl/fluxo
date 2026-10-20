@@ -9,16 +9,24 @@ enum PhaseColors {
 
 /// Bloco arredondado no estilo dos módulos da Central de Controle.
 struct ModuleBackground: ViewModifier {
+    /// Estica o bloco até o fim da coluna, para as colunas do painel terminarem alinhadas.
+    var fill = false
+
     func body(content: Content) -> some View {
         content
             .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
 extension View {
-    func module() -> some View { modifier(ModuleBackground()) }
+    /// Coluna do painel: largura fixa e altura da coluna mais alta.
+    func column() -> some View {
+        frame(width: PopoverView.columnWidth).frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    func module(fill: Bool = false) -> some View { modifier(ModuleBackground(fill: fill)) }
 }
 
 struct PopoverView: View {
@@ -26,10 +34,39 @@ struct PopoverView: View {
     @EnvironmentObject var history: HistoryStore
     @EnvironmentObject var tester: SpeedTester
 
+    @AppStorage(ModuleKey.historico) private var showHistory = true
+    @AppStorage(ModuleKey.redeLocal) private var showLocalNetwork = true
+
+    /// Largura de cada coluna do painel.
+    static let columnWidth: CGFloat = 300
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                internet.column()
+                if showHistory {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 12) {
+                        ColumnHeader(title: "Histórico", symbol: "clock.arrow.circlepath")
+                        HistoryList()
+                    }
+                    .column()
+                }
+                if showLocalNetwork {
+                    Divider()
+                    LocalNetworkColumn().column()
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Footer()
+        }
+        .padding(14)
+    }
+
+    private var internet: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Fluxo").font(.headline)
+                Label("Internet", systemImage: "network").font(.headline)
                 Spacer()
                 if let last = history.last, !tester.isRunning {
                     Text(last.date.formatted(.relative(presentation: .named)))
@@ -75,11 +112,7 @@ struct PopoverView: View {
 
             Metrics()
             AppsUsingNetwork()
-            HistoryList()
-            Footer()
         }
-        .padding(14)
-        .frame(width: 330)
     }
 
     private var gaugeValue: Double? {
@@ -206,7 +239,7 @@ struct AppsUsingNetwork: View {
             }
         }
         .animation(.default, value: apps.top.map(\.name))
-        .module()
+        .module(fill: true)
     }
 }
 
@@ -284,7 +317,7 @@ struct HistoryList: View {
                     .frame(maxHeight: (previewExpanded ?? selection.expanded) == nil ? 150 : 320)
                 }
             }
-            .module()
+            .module(fill: true)
         }
     }
 
@@ -427,9 +460,23 @@ struct CompactLabel: LabelStyle {
 
 // MARK: - Rodapé: ajustes e sair
 
+/// Quais módulos aparecem: colunas do painel da rede e itens da barra de menus.
+enum ModuleKey {
+    static let historico = "moduloHistorico"
+    static let redeLocal = "moduloRedeLocal"
+    static let cpu = "moduloCPU"
+    static let ram = "moduloRAM"
+    static let ssd = "moduloSSD"
+}
+
 struct Footer: View {
     @EnvironmentObject var controller: TestController
     @EnvironmentObject var history: HistoryStore
+    @AppStorage(ModuleKey.historico) private var showHistory = true
+    @AppStorage(ModuleKey.redeLocal) private var showLocalNetwork = true
+    @AppStorage(ModuleKey.cpu) private var showCPU = true
+    @AppStorage(ModuleKey.ram) private var showRAM = true
+    @AppStorage(ModuleKey.ssd) private var showSSD = true
 
     /// Alerta do sistema antes de apagar tudo (não dá para desfazer).
     private func confirmClearHistory() {
@@ -467,6 +514,17 @@ struct Footer: View {
                     Text("Operadora").tag(TestEngine.operadora)
                 }
                 Divider()
+                Menu("Módulos") {
+                    Section("No painel") {
+                        Toggle("Histórico", isOn: $showHistory)
+                        Toggle("Rede local", isOn: $showLocalNetwork)
+                    }
+                    Section("Na barra de menus") {
+                        Toggle("CPU", isOn: $showCPU)
+                        Toggle("RAM", isOn: $showRAM)
+                        Toggle("SSD", isOn: $showSSD)
+                    }
+                }
                 Picker("Barra de menus", selection: Binding(
                     get: { history.menuBarMode },
                     set: { controller.setMenuBarMode($0) })) {

@@ -7,6 +7,10 @@ import UserNotifications
 @main
 struct FluxoApp: App {
     @StateObject private var controller = TestController()
+    @AppStorage(ModuleKey.cpu) private var showCPU = true
+    @AppStorage(ModuleKey.ram) private var showRAM = true
+    @AppStorage(ModuleKey.ssd) private var showSSD = true
+    @AppStorage(ModuleKey.redeLocal) private var showLocalNetwork = true
 
     init() {
         let args = CommandLine.arguments
@@ -32,6 +36,9 @@ struct FluxoApp: App {
         if args.contains("--apps") {
             DispatchQueue.main.async { AppTrafficSelfTest.run() }
         }
+        if args.contains("--rede-local") {
+            DispatchQueue.main.async { LocalNetworkScanner.selfTest() }
+        }
         if args.contains("--trafego") {
             DispatchQueue.main.async { TrafficSelfTest.run() }
         }
@@ -47,24 +54,78 @@ struct FluxoApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            PopoverView()
-                .environmentObject(controller)
-                .environmentObject(controller.history)
-                .environmentObject(controller.tester)
-                .environmentObject(controller.appTraffic)
-                // A lista de apps só é medida com o painel aberto.
-                .onAppear { controller.appTraffic.start() }
-                .onDisappear { controller.appTraffic.stop() }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-                    controller.appTraffic.stop()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    controller.appTraffic.start()
-                }
+            panel
         } label: {
             MenuBarLabel(history: controller.history, tester: controller.tester, traffic: controller.traffic)
         }
         .menuBarExtraStyle(.window)
+
+        // CPU, RAM e disco, cada um no seu item e com o seu painel.
+        MenuBarExtra(isInserted: $showCPU) {
+            systemPanel(CPUColumn(), caption: "CPU") { CPUSettings() }
+        } label: {
+            SystemMenuBarLabel(badges: controller.system.badges, kind: .cpu)
+        }
+        .menuBarExtraStyle(.window)
+        MenuBarExtra(isInserted: $showRAM) {
+            systemPanel(MemoryColumn(), caption: "Memória") { RAMSettings() }
+        } label: {
+            SystemMenuBarLabel(badges: controller.system.badges, kind: .ram)
+        }
+        .menuBarExtraStyle(.window)
+        MenuBarExtra(isInserted: $showSSD) {
+            systemPanel(DiskColumn(), caption: "Disco") { SSDSettings() }
+        } label: {
+            SystemMenuBarLabel(badges: controller.system.badges, kind: .ssd)
+        }
+        .menuBarExtraStyle(.window)
+    }
+
+    private var panel: some View {
+        PopoverView()
+            .fitsWindow()
+            .environmentObject(controller)
+            .environmentObject(controller.history)
+            .environmentObject(controller.tester)
+            .environmentObject(controller.appTraffic)
+            .environmentObject(controller.localNetwork)
+            // A lista de apps e a rede local só são medidas com o painel aberto.
+            .onAppear { panelOpen(true) }
+            .onDisappear { panelOpen(false) }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                panelOpen(false)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                panelOpen(true)
+            }
+            .onChange(of: showLocalNetwork) { _, on in
+                if on { controller.localNetwork.start() } else { controller.localNetwork.stop() }
+            }
+    }
+
+    /// Painel de um item do sistema. Os processos só são medidos enquanto ele está aberto.
+    private func systemPanel(_ content: some View, caption: String,
+                             @ViewBuilder settings: @escaping () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            content
+            ModuleFooter(caption: caption, settings: settings)
+        }
+            .padding(14)
+            .frame(width: PopoverView.columnWidth + 28)
+            .fitsWindow()
+            .environmentObject(controller.system)
+            .onAppear { controller.system.setDetailed(true) }
+            .onDisappear { controller.system.setDetailed(false) }
+    }
+
+    private func panelOpen(_ open: Bool) {
+        if open {
+            controller.appTraffic.start()
+            if showLocalNetwork { controller.localNetwork.start() }
+        } else {
+            controller.appTraffic.stop()
+            controller.localNetwork.stop()
+        }
     }
 }
 
@@ -82,7 +143,7 @@ struct MenuBarLabel: View {
         } else {
             switch history.menuBarMode {
             case .trafego:
-                Image(nsImage: TrafficBadge.image(down: traffic.downBps, up: traffic.upBps))
+                Image(nsImage: TrafficBadge.image(traffic.label))
             case .ultimoTeste:
                 iconAndText(history.last.map { "\(Int($0.downloadMbps.rounded()))" })
             case .icone:
@@ -108,6 +169,8 @@ final class TestController: ObservableObject {
     let tester = SpeedTester()
     let traffic = TrafficMonitor()
     let appTraffic = AppTrafficMonitor()
+    let system = SystemMonitor()
+    let localNetwork = LocalNetworkScanner()
 
     @Published var errorMessage: String?
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -126,6 +189,7 @@ final class TestController: ObservableObject {
         }
         pathMonitor.start(queue: .global(qos: .utility))
         updateTrafficMonitor()
+        system.start()
         // A cada minuto, confere se está na hora de um teste automático.
         autoTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.autoTestIfDue() }
@@ -245,5 +309,48 @@ enum Notifier {
         content.body = body
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+}
+
+// MARK: - Janela do painel acompanha o conteúdo
+
+extension View {
+    /// A janela do MenuBarExtra cresce sozinha, mas não encolhe quando uma coluna some
+    /// (sobra uma área transparente). Isto ajusta a janela ao tamanho do conteúdo
+    /// sempre que ele muda.
+    func fitsWindow() -> some View {
+        fixedSize().background(WindowFitter())
+    }
+}
+
+private struct WindowFitter: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { FitterView() }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    /// Fica atrás do conteúdo e tem exatamente o tamanho dele; quando muda de tamanho,
+    /// leva a janela junto.
+    final class FitterView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            fit()
+        }
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            // Depois do ciclo de layout atual, para não brigar com o SwiftUI.
+            DispatchQueue.main.async { [weak self] in self?.fit() }
+        }
+
+        private func fit() {
+            guard let window, bounds.width > 0, bounds.height > 0 else { return }
+            let content = window.frameRect(forContentRect: NSRect(origin: .zero, size: bounds.size)).size
+            guard abs(window.frame.width - content.width) > 0.5 || abs(window.frame.height - content.height) > 0.5
+            else { return }
+            // Mantém o topo no lugar (o painel "pendura" na barra de menus).
+            var frame = window.frame
+            frame.origin.y += frame.height - content.height
+            frame.size = content
+            window.setFrame(frame, display: true)
+        }
     }
 }

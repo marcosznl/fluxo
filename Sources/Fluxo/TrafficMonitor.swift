@@ -5,8 +5,14 @@ import Darwin
 /// das interfaces físicas uma vez por segundo.
 @MainActor
 final class TrafficMonitor: ObservableObject {
-    @Published private(set) var downBps: Double = 0
-    @Published private(set) var upBps: Double = 0
+    private(set) var downBps: Double = 0
+    private(set) var upBps: Double = 0
+    /// O texto do selo. Só muda (e redesenha a barra) quando o número exibido muda.
+    @Published private(set) var label = Label(down: TrafficBadge.format(0), up: TrafficBadge.format(0))
+
+    struct Label: Equatable {
+        var down: String, up: String
+    }
 
     private var timer: Timer?
     private var last: (counters: [String: Counters], at: Date)?
@@ -30,6 +36,12 @@ final class TrafficMonitor: ObservableObject {
         timer = nil
         downBps = 0
         upBps = 0
+        publishLabel()
+    }
+
+    private func publishLabel() {
+        let new = Label(down: TrafficBadge.format(downBps), up: TrafficBadge.format(upBps))
+        if new != label { label = new }
     }
 
     private func sample() {
@@ -46,6 +58,7 @@ final class TrafficMonitor: ObservableObject {
             }
             downBps = Double(rx) * 8 / dt
             upBps = Double(tx) * 8 / dt
+            publishLabel()
         }
         last = (counters, now)
     }
@@ -103,14 +116,18 @@ enum TrafficBadge {
     private static let width: CGFloat = 54
 
     static func image(down: Double, up: Double) -> NSImage {
+        image(TrafficMonitor.Label(down: format(down), up: format(up)))
+    }
+
+    static func image(_ label: TrafficMonitor.Label) -> NSImage {
         let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
-            ("↓ " + format(down)).draw(at: NSPoint(x: 0, y: 10.5), withAttributes: attrs)
-            ("↑ " + format(up)).draw(at: NSPoint(x: 0, y: 0.5), withAttributes: attrs)
+            ("↓ " + label.down).draw(at: NSPoint(x: 0, y: 10.5), withAttributes: attrs)
+            ("↑ " + label.up).draw(at: NSPoint(x: 0, y: 0.5), withAttributes: attrs)
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Download \(format(down)), upload \(format(up))"
+        image.accessibilityDescription = "Download \(label.down), upload \(label.up)"
         return image
     }
 

@@ -135,6 +135,7 @@ enum Snapshot {
             .environmentObject(controller.history)
             .environmentObject(controller.tester)
             .environmentObject(controller.appTraffic)
+            .environmentObject(controller.localNetwork)
             .background(Color(nsColor: .windowBackgroundColor))
     }
 

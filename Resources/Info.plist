@@ -22,6 +22,8 @@
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>O Fluxo procura os aparelhos da sua rede local e mede o ping até eles.</string>
 	<key>LSUIElement</key>
 	<true/>
 </dict>
