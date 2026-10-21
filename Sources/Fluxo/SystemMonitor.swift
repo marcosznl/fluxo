@@ -115,6 +115,46 @@ final class SystemMonitor: ObservableObject {
         timer = nil
     }
 
+    /// Dados de exemplo para os prints do README (`--snapshot`).
+    func loadPreview() {
+        let n = max(efficiencyCores + performanceCores, 8)
+        coreUsage = (0..<n).map { i in [0.22, 0.35, 0.18, 0.41, 0.62, 0.28, 0.75, 0.33, 0.12, 0.47][i % 10] }
+        cpu = CPU(user: 0.24, system: 0.09)
+        cpuHistory = (0..<Self.historyLength).map { 0.2 + 0.12 * sin(Double($0) / 5) + 0.06 * sin(Double($0) * 1.7) }
+        loadAverage = [2.41, 2.18, 1.97]
+        processCount = 642
+        gpuUsage = 0.18
+        thermal = .nominal
+        topCPU = [("Safari", 0.42), ("WindowServer", 0.18), ("Xcode", 0.11), ("Música", 0.06),
+                  ("Finder", 0.03), ("Mensagens", 0.02)].enumerated().map { previewProcess($0.offset, $0.element) }
+        let gb: Double = 1_073_741_824
+        memory = Memory(app: UInt64(6.2 * gb), wired: UInt64(2.6 * gb), compressed: UInt64(1.1 * gb),
+                        cached: UInt64(4.4 * gb), free: UInt64(1.7 * gb))
+        memoryHistory = (0..<Self.historyLength).map { 0.6 + 0.03 * sin(Double($0) / 9) }
+        swapUsed = UInt64(0.8 * gb)
+        swapTotal = UInt64(2 * gb)
+        memoryPressure = 1
+        topMemory = [("Safari", 1.9), ("Xcode", 1.4), ("Mensagens", 0.6), ("Música", 0.45),
+                     ("Finder", 0.21), ("Notas", 0.18)].enumerated().map { previewProcess($0.offset, ($0.element.0, $0.element.1 * gb)) }
+        diskTotal = 494_000_000_000
+        diskFree = 187_000_000_000
+        diskReadBps = 3_400_000
+        diskWriteBps = 1_200_000
+        topDisk = [("Fotos", 2_100_000.0), ("Safari", 640_000), ("Spotlight", 380_000), ("Mail", 95_000)]
+            .enumerated().map { previewProcess($0.offset, $0.element) }
+        updateBadges()
+    }
+
+    private func previewProcess(_ i: Int, _ p: (String, Double)) -> TopProcess {
+        let icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: [
+            "Safari": "com.apple.Safari", "Xcode": "com.apple.dt.Xcode", "Música": "com.apple.Music",
+            "Finder": "com.apple.finder", "Mensagens": "com.apple.MobileSMS", "Notas": "com.apple.Notes",
+            "Fotos": "com.apple.Photos", "Mail": "com.apple.mail",
+        ][p.0] ?? "").map { NSWorkspace.shared.icon(forFile: $0.path) }
+        icon?.size = NSSize(width: 14, height: 14)
+        return TopProcess(id: Int32(90000 + i), name: p.0, icon: icon, value: p.1)
+    }
+
     /// Aplica um novo intervalo de leitura (ou outro ajuste que mude o selo).
     func settingsChanged() {
         if timer != nil {
@@ -835,6 +875,21 @@ final class StorageScanner: ObservableObject {
     ]
 
     func refreshIfStale() { refresh(force: false) }
+
+    /// Dados de exemplo para os prints do README (`--snapshot`).
+    func loadPreview() {
+        let gb: Int64 = 1_000_000_000
+        categories = [
+            Category(id: "Apps", symbol: "square.grid.2x2", color: .blue, bytes: 58 * gb),
+            Category(id: "Documentos", symbol: "doc", color: .orange, bytes: 41 * gb),
+            Category(id: "Fotos", symbol: "photo", color: .pink, bytes: 36 * gb),
+            Category(id: "Desenvolvedor", symbol: "hammer", color: .brown, bytes: 24 * gb),
+            Category(id: "iCloud Drive", symbol: "icloud", color: .cyan, bytes: 12 * gb),
+            Category(id: "Música", symbol: "music.note", color: .red, bytes: 7 * gb),
+            Category(id: "Mail", symbol: "envelope", color: .indigo, bytes: 3 * gb),
+        ]
+        scannedAt = .now
+    }
 
     func refresh(force: Bool) {
         guard !scanning else { return }

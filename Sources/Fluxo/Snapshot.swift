@@ -14,13 +14,33 @@ enum Snapshot {
             saveMenuBarPreview(TrafficBadge.image(down: down, up: up), to: out, name: "barra-\(name)")
         }
         saveMenuBarPreview(GaugeIcon.menuBarImage, to: out, name: "barra-icone")
+
+        // Os quatro ícones lado a lado, como ficam na barra.
+        let preview = TestController(history: sampleHistory(empty: false))
+        preview.system.stop()
+        preview.system.loadPreview()
+        preview.localNetwork.loadPreview()
+        StorageScanner.shared.loadPreview()
+        let v = preview.system.badges.values
+        saveMenuBarPreview(side(by: [TrafficBadge.image(down: 512e6, up: 3.2e6),
+                                     SystemBadge.image("CPU", v.cpu), SystemBadge.image("RAM", v.ram),
+                                     SystemBadge.image("SSD", v.ssd)]),
+                           to: out, name: "barra-completa")
         try? GaugeIcon.writeIconset(to: out.appendingPathComponent("AppIcon.iconset"))
 
         for (mode, appearance) in [("claro", NSAppearance.Name.aqua), ("escuro", .darkAqua)] {
             save(popover(TestController(history: sampleHistory(empty: true))), appearance,
                  to: out.appendingPathComponent("painel-vazio-\(mode).png"))
-            save(popover(TestController(history: sampleHistory(empty: false))), appearance,
-                 to: out.appendingPathComponent("painel-\(mode).png"))
+            save(popover(preview), appearance, to: out.appendingPathComponent("painel-\(mode).png"))
+            for (name, view) in [("cpu", AnyView(CPUColumn())), ("ram", AnyView(MemoryColumn())),
+                                 ("ssd", AnyView(DiskColumn()))] {
+                let panel = view
+                    .padding(14)
+                    .frame(width: PopoverView.columnWidth + 28)
+                    .environmentObject(preview.system)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                save(panel, appearance, to: out.appendingPathComponent("painel-\(name)-\(mode).png"))
+            }
             // O gráfico do histórico: todas as conexões com o mouse num ponto, só Wi-Fi e upload.
             let records = sampleHistory(empty: false).state.records
             let chartCases: [(String, [SpeedRecord], Date?, String)] = [
@@ -68,6 +88,22 @@ enum Snapshot {
                 save(gauge, appearance, to: out.appendingPathComponent("gauge-\(Int(speed))-\(mode).png"))
             }
         }
+    }
+
+    /// Junta imagens da barra de menus lado a lado, com o espaço que o macOS deixa entre elas.
+    private static func side(by images: [NSImage]) -> NSImage {
+        let gap: CGFloat = 12
+        let width = images.reduce(0) { $0 + $1.size.width } + gap * CGFloat(images.count - 1)
+        let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
+            var x: CGFloat = 0
+            for i in images {
+                i.draw(in: NSRect(x: x, y: (22 - i.size.height) / 2, width: i.size.width, height: i.size.height))
+                x += i.size.width + gap
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     private static func saveMenuBarPreview(_ image: NSImage, to out: URL, name: String) {

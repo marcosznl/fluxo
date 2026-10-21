@@ -106,6 +106,22 @@ final class LocalNetworkScanner: ObservableObject {
         }
     }
 
+    /// Aparelhos de exemplo para os prints do README (`--snapshot`).
+    func loadPreview() {
+        let now = Date.now
+        subnet = "192.168.1.0/24"
+        devices = [
+            Device(ip: "192.168.1.1", mac: "a4:91:b1:0c:22:10", name: "Roteador", pingMs: 2.1, lastSeen: now, isGateway: true),
+            Device(ip: "192.168.1.20", mac: "3c:22:fb:91:4e:07", name: "Este Mac", pingMs: nil, lastSeen: now, isThisMac: true),
+            Device(ip: "192.168.1.23", mac: "f0:18:98:5a:11:c2", name: "iPhone", pingMs: 38, lastSeen: now),
+            Device(ip: "192.168.1.31", mac: "d0:03:4b:7e:90:aa", name: "Apple TV da Sala", pingMs: 4, lastSeen: now),
+            Device(ip: "192.168.1.40", mac: "78:dd:12:34:f5:34", name: "LG webOS TV", pingMs: 25, lastSeen: now),
+            Device(ip: "192.168.1.52", mac: "5c:aa:fd:20:13:9e", name: "MacBook Pro", pingMs: 6, lastSeen: now),
+            Device(ip: "192.168.1.67", mac: "7a:5b:2c:1e:1b:c0", name: nil, pingMs: 61, lastSeen: now),
+            Device(ip: "192.168.1.88", mac: "90:a8:22:49:dd:01", name: "Impressora", pingMs: nil, lastSeen: now),
+        ]
+    }
+
     /// `Fluxo --rede-local`: faz uma varredura e imprime o que achou.
     static func selfTest() {
         let r = discover()
