@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/marcosznl/fluxo/releases/latest"><b>⬇︎ Baixar o DMG</b></a>
-  &nbsp;·&nbsp; macOS 14 Sonoma ou mais novo &nbsp;·&nbsp; Apple Silicon &nbsp;·&nbsp; 0,8 MB
+  &nbsp;·&nbsp; macOS 14 Sonoma ou mais novo &nbsp;·&nbsp; Apple Silicon &nbsp;·&nbsp; 1,0 MB
 </p>
 
 <p align="center">
